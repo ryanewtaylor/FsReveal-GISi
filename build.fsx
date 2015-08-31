@@ -23,6 +23,11 @@ open Suave
 open Suave.Web
 open Suave.Http
 open Suave.Http.Files
+open Suave.Sockets
+open Suave.Sockets.Control
+open Suave.Sockets.AsyncSocket
+open Suave.WebSocket
+open Suave.Utils
 
 let outDir = __SOURCE_DIRECTORY__ @@ "output"
 let slidesDir = __SOURCE_DIRECTORY__ @@ "slides"
@@ -68,12 +73,25 @@ let generateFor (file:FileInfo) =
     | :? FileNotFoundException as exn ->
         traceImportant <| sprintf "Could not copy file: %s" exn.FileName
 
-let handleWatcherEvents (e:FileSystemEventArgs) =
-    let fi = fileInfo e.FullPath 
-    traceImportant <| sprintf "%s was changed." fi.Name
-    match fi.Attributes.HasFlag FileAttributes.Hidden || fi.Attributes.HasFlag FileAttributes.Directory with
-            | true -> ()
-            | _ -> generateFor fi
+let refreshEvent = new Event<_>()
+
+let handleWatcherEvents (events:FileChange seq) =
+    for e in events do
+        let fi = fileInfo e.FullPath
+        traceImportant <| sprintf "%s was changed." fi.Name
+        match fi.Attributes.HasFlag FileAttributes.Hidden || fi.Attributes.HasFlag FileAttributes.Directory with
+        | true -> ()
+        | _ -> generateFor fi
+    refreshEvent.Trigger()
+
+let socketHandler (webSocket : WebSocket) =
+  fun cx -> socket {
+    while true do
+      let! refreshed =
+        Control.Async.AwaitEvent(refreshEvent.Publish)
+        |> Suave.Sockets.SocketOp.ofAsync 
+      do! webSocket.send Text (UTF8.bytes "refreshed") true
+  }
 
 let startWebServer () =
     let serverConfig = 
@@ -81,10 +99,12 @@ let startWebServer () =
            homeFolder = Some (FullName outDir)
         }
     let app =
+      choose [
+        Applicatives.path "/websocket" >>= handShake socketHandler
         Writers.setHeader "Cache-Control" "no-cache, no-store, must-revalidate"
         >>= Writers.setHeader "Pragma" "no-cache"
         >>= Writers.setHeader "Expires" "0"
-        >>= browseHome
+        >>= browseHome ]
     startWebServerAsync serverConfig app |> snd |> Async.Start
     Process.Start "http://localhost:8083/index.html" |> ignore
 
@@ -95,21 +115,17 @@ Target "GenerateSlides" (fun _ ->
     |> Seq.iter generateFor
 )
 
-Target "KeepRunning" (fun _ ->
-    use watcher = new FileSystemWatcher(FullName slidesDir,"*.*")
-    watcher.EnableRaisingEvents <- true
-    watcher.IncludeSubdirectories <- true
-    watcher.Changed.Add(handleWatcherEvents)
-    watcher.Created.Add(handleWatcherEvents)
-    watcher.Renamed.Add(handleWatcherEvents)
-
+Target "KeepRunning" (fun _ ->    
+    use watcher = !! (slidesDir + "/**/*.*") |> WatchChanges (fun changes ->
+         handleWatcherEvents changes
+    )
+    
     startWebServer ()
 
     traceImportant "Waiting for slide edits. Press any key to stop."
 
     System.Console.ReadKey() |> ignore
 
-    watcher.EnableRaisingEvents <- false
     watcher.Dispose()
 )
 

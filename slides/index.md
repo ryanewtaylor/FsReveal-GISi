@@ -10,6 +10,7 @@
 
 - Generates [reveal.js](http://lab.hakim.se/reveal-js/#/) presentation from [markdown](http://daringfireball.net/projects/markdown/)
 - Utilizes [FSharp.Formatting](https://github.com/tpetricek/FSharp.Formatting) for markdown parsing
+- Get it from [http://fsprojects.github.io/FsReveal/](http://fsprojects.github.io/FsReveal/)
 
 ![FsReveal](images/logo.png)
 
@@ -84,7 +85,8 @@
 #### Haskell
  
     [lang=haskell]
-    recur_count k = 1 : 1 : zipWith recurAdd (recur_count k) (tail (recur_count k))
+    recur_count k = 1 : 1 : 
+        zipWith recurAdd (recur_count k) (tail (recur_count k))
             where recurAdd x y = k * x + y
 
     main = do
@@ -107,6 +109,26 @@
     where Id in (@Ids1, @Ids2, @Ids3)
 
 *sql from [Dapper](https://code.google.com/p/dapper-dot-net/)*
+
+---
+
+### C/AL
+
+    [lang=cal]
+    PROCEDURE FizzBuzz(n : Integer) r_Text : Text[1024];
+    VAR
+      l_Text : Text[1024];
+    BEGIN
+      r_Text := '';
+      l_Text := FORMAT(n);
+
+      IF (n MOD 3 = 0) OR (STRPOS(l_Text,'3') > 0) THEN
+        r_Text := 'Fizz';
+      IF (n MOD 5 = 0) OR (STRPOS(l_Text,'5') > 0) THEN
+        r_Text := r_Text + 'Buzz';
+      IF r_Text = '' THEN
+        r_Text := l_Text;
+    END;
 
 ***
 
